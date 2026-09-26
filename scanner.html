@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Scanner Barcode - Gudang Al Fazza</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:Inter,Arial,sans-serif;background:radial-gradient(circle at top,#123553,#06111d 58%,#02070c);color:#eefaff;padding:18px}
+.wrap{max-width:650px;margin:auto}
+.glass{background:rgba(8,31,49,.9);border:1px solid rgba(99,218,255,.28);border-radius:22px;box-shadow:0 20px 60px #0008;padding:20px}
+.logo{font-size:25px;font-weight:900;letter-spacing:2px}
+.sub{color:#91b7ca;line-height:1.5}
+#reader{margin-top:18px;background:#fff;border-radius:18px;overflow:hidden;color:#111}
+.btn{width:100%;border:0;border-radius:14px;padding:14px 17px;margin-top:12px;font-weight:900;cursor:pointer;color:#03202d;background:linear-gradient(#91edff,#35bde9);box-shadow:0 6px 0 #147b9e}
+.red{background:linear-gradient(#ff8c9e,#ff4964);box-shadow:0 6px 0 #9e2438}
+input,select{width:100%;padding:14px;margin-top:12px;border-radius:13px;border:1px solid #28546d;background:#071c2a;color:#fff;outline:none}
+.status{margin-top:15px;padding:12px;border-radius:12px;background:#071c2a;color:#bfeaff}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="glass">
+    <div class="logo">◈ GUDANG AL FAZZA</div>
+    <p class="sub">Scanner Barcode Aman • Kamera Belakang • HTTPS</p>
+
+    <select id="cameraSelect" class="hidden"></select>
+    <button id="startBtn" class="btn" onclick="startScanner()">📷 AKTIFKAN KAMERA</button>
+    <button id="stopBtn" class="btn red hidden" onclick="stopScanner()">⏹ MATIKAN KAMERA</button>
+
+    <div id="status" class="status">Tekan AKTIFKAN KAMERA.</div>
+    <div id="reader"></div>
+
+    <input id="manual" inputmode="numeric" autocomplete="off" placeholder="Atau ketik barcode manual">
+    <button class="btn" onclick="sendManual()">GUNAKAN BARCODE MANUAL</button>
+  </div>
+</div>
+
+<script>
+let scanner=null;
+const params=new URLSearchParams(location.search);
+const returnUrl=params.get('return')||'';
+const target=params.get('target')||'lookupCode';
+
+function status(t){document.getElementById('status').textContent=t}
+
+async function startScanner(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    return status('Browser tidak mendukung kamera.');
+  }
+  try{
+    status('Meminta izin kamera...');
+    const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    stream.getTracks().forEach(t=>t.stop());
+
+    const cams=await Html5Qrcode.getCameras();
+    if(!cams.length)throw new Error('Kamera tidak ditemukan.');
+
+    const sel=document.getElementById('cameraSelect');
+    sel.innerHTML='';
+    cams.forEach((c,i)=>{
+      const o=document.createElement('option');
+      o.value=c.id;
+      o.textContent=c.label||('Kamera '+(i+1));
+      sel.appendChild(o);
+    });
+
+    let chosen=cams.find(c=>/back|rear|environment|belakang/i.test(c.label||''));
+    if(!chosen)chosen=cams.length>1?cams[cams.length-1]:cams[0];
+    sel.value=chosen.id;
+    if(cams.length>1)sel.classList.remove('hidden');
+
+    scanner=new Html5Qrcode('reader');
+    document.getElementById('startBtn').classList.add('hidden');
+    document.getElementById('stopBtn').classList.remove('hidden');
+    status('Kamera aktif. Arahkan barcode ke kotak scanner.');
+
+    await scanner.start(
+      chosen.id,
+      {fps:12,qrbox:(w,h)=>({width:Math.min(380,Math.floor(w*.88)),height:150})},
+      async text=>{
+        const code=String(text||'').trim();
+        if(!code)return;
+        await stopScanner();
+        sendBack(code);
+      },
+      ()=>{}
+    );
+  }catch(e){
+    scanner=null;
+    document.getElementById('startBtn').classList.remove('hidden');
+    document.getElementById('stopBtn').classList.add('hidden');
+    let m=e&&e.message?e.message:String(e);
+    if((e&&e.name)==='NotAllowedError'||/permission|denied/i.test(m)){
+      m='Izin kamera ditolak. Izinkan kamera untuk situs scanner ini lalu coba lagi.';
+    }
+    status(m);
+  }
+}
+
+async function stopScanner(){
+  if(scanner){
+    try{await scanner.stop()}catch(e){}
+    try{scanner.clear()}catch(e){}
+    scanner=null;
+  }
+  document.getElementById('startBtn').classList.remove('hidden');
+  document.getElementById('stopBtn').classList.add('hidden');
+}
+
+function sendManual(){
+  const code=document.getElementById('manual').value.trim();
+  if(!code)return status('Masukkan barcode terlebih dahulu.');
+  sendBack(code);
+}
+
+function sendBack(code){
+  if(!returnUrl){
+    status('URL aplikasi belum diterima. Barcode: '+code);
+    return;
+  }
+  const sep=returnUrl.includes('#')?'&':'#';
+  location.href=returnUrl+sep+'barcode='+encodeURIComponent(code)+'&target='+encodeURIComponent(target);
+}
+</script>
+</body>
+</html>
